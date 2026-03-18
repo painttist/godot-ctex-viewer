@@ -53,7 +53,7 @@
       max-width: 420px;
       box-shadow: 0 8px 20px rgba(0,0,0,0.6);
     }
-    .card img {
+    .card img, .card canvas {
       max-width: 100%;
       border-radius: 12px;
       image-rendering: pixelated;
@@ -65,6 +65,26 @@
       font-size: 1.05rem;
       word-break: break-all;
       color: #ccc;
+    }
+    .badge {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .badge-webp    { background: #1a4a2a; color: #4ef; }
+    .badge-basis   { background: #2a2a50; color: #99f; }
+    .badge-dxt     { background: #4a2a10; color: #fa8; }
+    .badge-rgba    { background: #2a1a30; color: #c8a; }
+    .badge-error   { background: #3a1010; color: #f66; }
+    .info {
+      margin-top: 5px;
+      font-size: 0.82rem;
+      color: #888;
     }
   </style>
 </head>
@@ -79,57 +99,258 @@
 
   <div id="gallery"></div>
 
+<script src="basis_transcoder.js"></script>
 <script>
-  const drop = document.getElementById('drop');
-  const input = document.getElementById('fileInput');
+  // ── Basis Universal transcoder initialisation ────────────────────────────
+  let basisModule = null;
+  BASIS().then(m => {
+    if (typeof m.initializeBasis === 'function') m.initializeBasis();
+    basisModule = m;
+  }).catch(() => { /* Basis not available — other formats still work */ });
+
+  // ── UI wiring ────────────────────────────────────────────────────────────
+  const drop    = document.getElementById('drop');
+  const input   = document.getElementById('fileInput');
   const gallery = document.getElementById('gallery');
 
   drop.addEventListener('click', () => input.click());
   input.addEventListener('change', e => processFiles(e.target.files));
-
   ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('dragover'); }));
   ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('dragover'); }));
   drop.addEventListener('drop', e => processFiles(e.dataTransfer.files));
 
-  function findRIFF(bytes) {
-    for (let i = 0; i < bytes.length - 4; i++) {
-      if (bytes[i]===82 && bytes[i+1]===73 && bytes[i+2]===70 && bytes[i+3]===70) return i;
+  // ── CTEX format constants ────────────────────────────────────────────────
+  // dataFormat field (offset 0x24)
+  const FMT_VRAM  = 0;
+  const FMT_WEBP  = 2;
+  const FMT_BASIS = 3;
+
+  // Godot Image::Format enum (offset 0x30, only used when dataFormat == FMT_VRAM)
+  const IMG_RGBA8 = 5;
+  const IMG_DXT1  = 17;   // BC1 / S3TC DXT1
+
+  // ── CTEX header parser ───────────────────────────────────────────────────
+  // GST2 header layout (all fields little-endian):
+  //   0x00  u32  magic "GST2"
+  //   0x04  u32  version (1)
+  //   0x08  u32  width
+  //   0x0C  u32  height
+  //   0x10  u32  flags
+  //   0x14  u32  reserved...
+  //   0x24  u32  dataFormat  (0=VRAM, 2=WebP, 3=Basis)
+  //   0x28  u16  mip width, 0x2A u16 mip height
+  //   0x2C  u32  mip count
+  //   0x30  u32  imageFormat (Godot Image::Format enum)
+  //   -- for dataFormat 2 or 3: 0x34 u32 payload size, data at 0x38 --
+  //   -- for dataFormat 0:      data starts at 0x34                  --
+  function parseCTEX(bytes) {
+    const magic = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+    if (magic !== 'GST2') throw new Error('Not a CTEX file (bad magic)');
+
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const width      = dv.getUint32(0x08, true);
+    const height     = dv.getUint32(0x0C, true);
+    const dataFmt    = dv.getUint32(0x24, true);
+    const imageFmt   = dv.getUint32(0x30, true);
+
+    if (dataFmt === FMT_WEBP) {
+      const size = dv.getUint32(0x34, true);
+      return { kind: 'webp', width, height, payload: bytes.slice(0x38, 0x38 + size) };
     }
-    return -1;
+
+    if (dataFmt === FMT_BASIS) {
+      // A 4-byte Godot-specific prefix sits at 0x38 before the KTX2 magic at 0x3C
+      return { kind: 'basis', width, height, payload: bytes.slice(0x3C) };
+    }
+
+    if (dataFmt === FMT_VRAM) {
+      if (imageFmt === IMG_DXT1) {
+        return { kind: 'dxt1', width, height, payload: bytes.slice(0x34) };
+      }
+      if (imageFmt === IMG_RGBA8) {
+        return { kind: 'rgba8', width, height, payload: bytes.slice(0x34) };
+      }
+      throw new Error(`Unsupported VRAM image format: ${imageFmt}`);
+    }
+
+    throw new Error(`Unsupported CTEX data format: ${dataFmt}`);
   }
 
-  async function processFiles(files) {
-    for (let file of files) {
-      if (!file.name.toLowerCase().endsWith('.ctex')) continue;
+  // ── Renderers ────────────────────────────────────────────────────────────
 
-      const buffer = await file.arrayBuffer();
-      const bytes = new Uint8Array(buffer);
-      const riffIndex = findRIFF(bytes);
+  // Lossless / Lossy: the payload is a complete WebP file
+  function renderWebP(parsed) {
+    const blob = new Blob([parsed.payload], { type: 'image/webp' });
+    const url  = URL.createObjectURL(blob);
+    const img  = new Image();
+    img.src = url;
+    return { el: img, badge: 'badge-webp', label: 'WebP' };
+  }
+
+  // Basis Universal / KTX2
+  async function renderBasis(parsed) {
+    if (!basisModule) throw new Error('Basis transcoder not yet loaded');
+
+    const fmt = basisModule.cTFRGBA32 ?? 13; // cTFRGBA32 = 13
+    let width, height, rgba;
+
+    if (basisModule.KTX2File) {
+      const f = new basisModule.KTX2File(parsed.payload);
+      if (!f.isValid()) { f.close(); f.delete(); throw new Error('Invalid KTX2 data'); }
+      width  = f.getWidth();
+      height = f.getHeight();
+      if (!f.startTranscoding()) { f.close(); f.delete(); throw new Error('KTX2 startTranscoding failed'); }
+      const dstSize = f.getImageTranscodedSizeInBytes(0, 0, 0, fmt);
+      rgba = new Uint8Array(dstSize);
+      if (!f.transcodeImage(rgba, 0, 0, 0, fmt, 0, -1, -1)) {
+        f.close(); f.delete(); throw new Error('KTX2 transcodeImage failed');
+      }
+      f.close(); f.delete();
+    } else if (basisModule.BasisFile) {
+      // Older build — try BasisFile (some versions auto-detect KTX2)
+      const f = new basisModule.BasisFile(parsed.payload);
+      if (!f.startTranscoding()) { f.close(); f.delete(); throw new Error('BasisFile startTranscoding failed'); }
+      width  = f.getImageWidth(0, 0);
+      height = f.getImageHeight(0, 0);
+      const dstSize = f.getImageTranscodedSizeInBytes(0, 0, fmt);
+      rgba = new Uint8Array(dstSize);
+      if (!f.transcodeImage(rgba, 0, 0, fmt, 0, 0)) {
+        f.close(); f.delete(); throw new Error('BasisFile transcodeImage failed');
+      }
+      f.close(); f.delete();
+    } else {
+      throw new Error('Basis module has no BasisFile or KTX2File class');
+    }
+
+    return { el: rgbaToCanvas(rgba, width, height), badge: 'badge-basis', label: 'Basis Universal' };
+  }
+
+  // VRAM Uncompressed — raw RGBA8 pixels
+  function renderRGBA8(parsed) {
+    const canvas = rgbaToCanvas(parsed.payload, parsed.width, parsed.height);
+    return { el: canvas, badge: 'badge-rgba', label: `VRAM Uncompressed ${parsed.width}×${parsed.height}` };
+  }
+
+  // VRAM Compressed — DXT1 (BC1) blocks
+  function renderDXT1(parsed) {
+    const rgba = decodeDXT1(parsed.payload, parsed.width, parsed.height);
+    const canvas = rgbaToCanvas(rgba, parsed.width, parsed.height);
+    return { el: canvas, badge: 'badge-dxt', label: `VRAM DXT1 ${parsed.width}×${parsed.height}` };
+  }
+
+  // ── DXT1 (BC1) software decoder ──────────────────────────────────────────
+  function decodeDXT1(src, width, height) {
+    const out    = new Uint8Array(width * height * 4);
+    const blocksX = Math.ceil(width  / 4);
+    const blocksY = Math.ceil(height / 4);
+
+    for (let by = 0; by < blocksY; by++) {
+      for (let bx = 0; bx < blocksX; bx++) {
+        const off = (by * blocksX + bx) * 8;
+
+        // Two RGB565 endpoint colours
+        const c0 = src[off]     | (src[off + 1] << 8);
+        const c1 = src[off + 2] | (src[off + 3] << 8);
+
+        // Expand RGB565 → RGB888
+        const r0 = Math.round(((c0 >> 11) & 0x1F) * (255 / 31));
+        const g0 = Math.round(((c0 >>  5) & 0x3F) * (255 / 63));
+        const b0 = Math.round( (c0        & 0x1F) * (255 / 31));
+        const r1 = Math.round(((c1 >> 11) & 0x1F) * (255 / 31));
+        const g1 = Math.round(((c1 >>  5) & 0x3F) * (255 / 63));
+        const b1 = Math.round( (c1        & 0x1F) * (255 / 31));
+
+        // Build 4-entry palette
+        const pal = new Uint8Array(16); // 4 colours × RGBA
+        pal[ 0]=r0; pal[ 1]=g0; pal[ 2]=b0; pal[ 3]=255;
+        pal[ 4]=r1; pal[ 5]=g1; pal[ 6]=b1; pal[ 7]=255;
+        if (c0 > c1) {
+          pal[ 8]=Math.round((2*r0+r1)/3); pal[ 9]=Math.round((2*g0+g1)/3); pal[10]=Math.round((2*b0+b1)/3); pal[11]=255;
+          pal[12]=Math.round((r0+2*r1)/3); pal[13]=Math.round((g0+2*g1)/3); pal[14]=Math.round((b0+2*b1)/3); pal[15]=255;
+        } else {
+          pal[ 8]=Math.round((r0+r1)/2); pal[ 9]=Math.round((g0+g1)/2); pal[10]=Math.round((b0+b1)/2); pal[11]=255;
+          pal[12]=0; pal[13]=0; pal[14]=0; pal[15]=0; // transparent
+        }
+
+        // 4×4 index table (2 bits per texel, row-major)
+        const idx32 = src[off+4] | (src[off+5]<<8) | (src[off+6]<<16) | (src[off+7]<<24);
+
+        for (let row = 0; row < 4; row++) {
+          for (let col = 0; col < 4; col++) {
+            const px = bx * 4 + col;
+            const py = by * 4 + row;
+            if (px >= width || py >= height) continue;
+            const palIdx = (idx32 >>> ((row * 4 + col) * 2)) & 3;
+            const dst    = (py * width + px) * 4;
+            out[dst]   = pal[palIdx * 4];
+            out[dst+1] = pal[palIdx * 4 + 1];
+            out[dst+2] = pal[palIdx * 4 + 2];
+            out[dst+3] = pal[palIdx * 4 + 3];
+          }
+        }
+      }
+    }
+    return out;
+  }
+
+  // ── Utility ──────────────────────────────────────────────────────────────
+  function rgbaToCanvas(rgba, width, height) {
+    const canvas = document.createElement('canvas');
+    canvas.width  = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    const imgData = ctx.createImageData(width, height);
+    imgData.data.set(rgba.subarray(0, width * height * 4));
+    ctx.putImageData(imgData, 0, 0);
+    return canvas;
+  }
+
+  // ── Main file processor ───────────────────────────────────────────────────
+  async function processFiles(files) {
+    for (const file of files) {
+      if (!file.name.toLowerCase().endsWith('.ctex')) continue;
 
       const card = document.createElement('div');
       card.className = 'card';
+      gallery.appendChild(card);
 
-      if (riffIndex !== -1) {
-        const ddsData = bytes.slice(riffIndex);
-        const blob = new Blob([ddsData], { type: 'image/vnd.ms-dds' });
-        const url = URL.createObjectURL(blob);
+      try {
+        const buffer = await file.arrayBuffer();
+        const bytes  = new Uint8Array(buffer);
+        const parsed = parseCTEX(bytes);
 
-        const img = document.createElement('img');
-        img.src = url;
-        card.appendChild(img);
-      } else {
-        const p = document.createElement('p');
-        p.textContent = 'No image data found';
-        p.style.color = '#f66';
-        card.appendChild(p);
+        let result;
+        switch (parsed.kind) {
+          case 'webp':  result = renderWebP(parsed);         break;
+          case 'basis': result = await renderBasis(parsed);  break;
+          case 'rgba8': result = renderRGBA8(parsed);        break;
+          case 'dxt1':  result = renderDXT1(parsed);         break;
+        }
+
+        card.appendChild(result.el);
+
+        const badge = document.createElement('div');
+        badge.className = `badge ${result.badge}`;
+        badge.textContent = result.label;
+        card.appendChild(badge);
+
+      } catch (err) {
+        const msg = document.createElement('p');
+        msg.textContent = String(err);
+        msg.style.color = '#f66';
+        msg.style.margin = '10px 0';
+        card.appendChild(msg);
+
+        const badge = document.createElement('div');
+        badge.className = 'badge badge-error';
+        badge.textContent = 'Error';
+        card.appendChild(badge);
       }
 
       const name = document.createElement('div');
       name.className = 'name';
       name.textContent = file.name;
       card.appendChild(name);
-
-      gallery.appendChild(card);
     }
   }
 </script>
