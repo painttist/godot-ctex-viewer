@@ -4,4 +4,6 @@ A single local HTML file that views Godot .ctex files. Supports the following mo
 
 ## How to use
 
-Simply download the `godot-ctex-viewer.html` file and open it in a browser.
+You can visit https://painttist.github.io/godot-ctex-viewer/godot-ctex-viewer.html to use it. (Your file are not uploaded)
+
+Alternatively, simply download the `godot-ctex-viewer.html` file and open it in a browser.
