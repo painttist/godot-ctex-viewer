@@ -3,101 +3,374 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>.ctex Viewer</title>
+  <title>Godot CTEX Viewer</title>
   <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0e0e13;
+      --surface:  #15151e;
+      --card:     #1b1b26;
+      --border:   #28283a;
+      --accent:   #7c6df2;
+      --accent-h: #a394f8;
+      --text:     #dddde8;
+      --muted:    #666680;
+      --radius:   9px;
+    }
+
     body {
-      margin: 0;
-      background: #0a0a0a;
-      color: #ddd;
-      font-family: system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 14px;
       height: 100vh;
       display: flex;
       flex-direction: column;
       overflow: hidden;
     }
-    #drop {
+
+    /* ── Header ─────────────────────────────────────────────────────── */
+    header {
+      flex-shrink: 0;
+      height: 50px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 18px;
+      gap: 10px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      font-size: 14.5px;
+      font-weight: 600;
+      color: var(--text);
       flex: 1;
-      border: 8px dashed #555;
-      margin: 30px;
-      border-radius: 30px;
+      user-select: none;
+    }
+
+    .logo-sep { color: var(--border); margin: 0 2px; font-weight: 300; }
+
+    .logo-sub { font-weight: 400; color: var(--muted); font-size: 13px; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 13px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.14s, border-color 0.14s, color 0.14s;
+      white-space: nowrap;
+      font-family: inherit;
+    }
+    .btn:hover { background: var(--card); border-color: #38384e; }
+
+    .btn-accent {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .btn-accent:hover { background: var(--accent-h); border-color: var(--accent-h); }
+
+    /* ── Main ────────────────────────────────────────────────────────── */
+    main {
+      flex: 1;
+      overflow-y: auto;
+      position: relative;
+    }
+
+    /* ── Empty state ─────────────────────────────────────────────────── */
+    #empty {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 13px;
+      padding: 40px;
+      text-align: center;
+    }
+
+    .empty-icon { color: var(--muted); opacity: 0.35; }
+
+    #empty h2 { font-size: 18px; font-weight: 600; margin-top: 4px; }
+
+    #empty .sub {
+      color: var(--muted);
+      font-size: 13.5px;
+      line-height: 1.65;
+      max-width: 380px;
+    }
+
+    code {
+      background: var(--card);
+      border: 1px solid var(--border);
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 0.9em;
+      font-family: ui-monospace, 'Cascadia Code', monospace;
+    }
+
+    .drop-zone {
+      margin-top: 4px;
+      padding: 20px 36px;
+      border: 1.5px dashed var(--border);
+      border-radius: 14px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.7;
+      max-width: 420px;
+      transition: border-color 0.2s, color 0.2s, background 0.2s;
+    }
+
+    body.dragging .drop-zone {
+      border-color: var(--accent);
+      color: var(--accent-h);
+      background: rgba(124, 109, 242, 0.05);
+    }
+
+    /* ── Gallery ─────────────────────────────────────────────────────── */
+    #gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+      gap: 13px;
+      padding: 16px;
+      align-content: start;
+    }
+
+    /* ── Card ────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      transition: border-color 0.17s, box-shadow 0.17s, transform 0.17s;
+    }
+    .card:hover {
+      border-color: #38384e;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.45);
+      transform: translateY(-1px);
+    }
+
+    /* Checkerboard for transparency */
+    .preview {
+      width: 100%;
+      aspect-ratio: 1;
+      background-color: #282828;
+      background-image:
+        linear-gradient(45deg, #323232 25%, transparent 25%),
+        linear-gradient(-45deg, #323232 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #323232 75%),
+        linear-gradient(-45deg, transparent 75%, #323232 75%);
+      background-size: 12px 12px;
+      background-position: 0 0, 0 6px, 6px -6px, -6px 0;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 3.2rem;
-      color: #777;
-      cursor: pointer;
-      transition: all 0.3s;
-      text-align: center;
-      background: rgba(255,255,255,0.02);
+      overflow: hidden;
     }
-    #drop.dragover {
-      border-color: #0f8;
-      color: #0f8;
-      background: rgba(0,255,130,0.1);
-      font-size: 3.5rem;
-    }
-    #gallery {
-      padding: 20px 40px;
-      overflow-y: auto;
-      background: #111;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 20px;
-      justify-content: center;
-    }
-    .card {
-      background: #1e1e1e;
-      padding: 15px;
-      border-radius: 18px;
-      text-align: center;
-      max-width: 420px;
-      box-shadow: 0 8px 20px rgba(0,0,0,0.6);
-    }
-    .card img, .card canvas {
-      max-width: 100%;
-      border-radius: 12px;
+
+    .preview img,
+    .preview canvas {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
       image-rendering: pixelated;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.5);
     }
-    .name {
-      margin-top: 12px;
-      font-weight: 600;
-      font-size: 1.05rem;
-      word-break: break-all;
-      color: #ccc;
+
+    /* Error state replaces .preview */
+    .preview-error {
+      width: 100%;
+      aspect-ratio: 1;
+      background: #160808;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      color: #c04040;
+      font-size: 12px;
+      text-align: center;
+      padding: 18px;
+      line-height: 1.5;
     }
+    .preview-error svg { opacity: 0.45; }
+
+    /* ── Card metadata ───────────────────────────────────────────────── */
+    .card-meta {
+      padding: 9px 10px 11px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .card-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+
     .badge {
-      display: inline-block;
-      margin-top: 8px;
-      padding: 3px 10px;
-      border-radius: 20px;
-      font-size: 0.78rem;
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 10px;
       font-weight: 700;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.06em;
       text-transform: uppercase;
+      flex-shrink: 0;
     }
-    .badge-webp    { background: #1a4a2a; color: #4ef; }
-    .badge-basis   { background: #2a2a50; color: #99f; }
-    .badge-dxt     { background: #4a2a10; color: #fa8; }
-    .badge-rgba    { background: #2a1a30; color: #c8a; }
-    .badge-error   { background: #3a1010; color: #f66; }
-    .info {
+
+    .badge-webp  { background: #0c2a1a; color: #38c070; border: 1px solid #184530; }
+    .badge-basis { background: #14183e; color: #7886f0; border: 1px solid #202a5a; }
+    .badge-dxt   { background: #2a1804; color: #de882e; border: 1px solid #402208; }
+    .badge-vram  { background: #1a1030; color: #a870f0; border: 1px solid #281848; }
+    .badge-error { background: #280a0a; color: #d04040; border: 1px solid #3c1010; }
+
+    .dims {
+      font-size: 11px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      font-family: ui-monospace, monospace;
+    }
+
+    .fname {
+      font-size: 11.5px;
+      color: var(--text);
+      opacity: 0.65;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .fsize {
+      font-size: 11px;
+      color: var(--muted);
+      opacity: 0.55;
+    }
+
+    /* ── Status bar ──────────────────────────────────────────────────── */
+    #statusBar {
+      flex-shrink: 0;
+      height: 33px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      gap: 10px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    #statusBar .spacer { flex: 1; }
+    #statusBar .btn { padding: 3px 10px; font-size: 12px; }
+
+    /* ── Drag overlay ────────────────────────────────────────────────── */
+    #overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(14, 14, 19, 0.86);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      pointer-events: none;
+    }
+    body.dragging #overlay { display: flex; }
+
+    .overlay-box {
+      border: 2px dashed var(--accent);
+      border-radius: 18px;
+      padding: 52px 72px;
+      text-align: center;
+      color: var(--accent-h);
+    }
+    .overlay-box p {
+      font-size: 20px;
+      font-weight: 600;
+      margin-top: 14px;
+    }
+    .overlay-box .hint {
+      font-size: 13px;
+      opacity: 0.6;
       margin-top: 5px;
-      font-size: 0.82rem;
-      color: #888;
     }
   </style>
 </head>
 <body>
 
-  <div id="drop">
-    DROP .CTEX FILE HERE<br>
-    <small style="font-size:1.5rem; margin-top:25px; opacity:0.7;">or click to select</small>
+  <header>
+    <div class="logo">
+      <!-- 2x2 grid icon -->
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+        <rect x="1"  y="1"  width="10" height="10" rx="2" fill="#7c6df2"/>
+        <rect x="13" y="1"  width="10" height="10" rx="2" fill="#7c6df2" opacity="0.55"/>
+        <rect x="1"  y="13" width="10" height="10" rx="2" fill="#7c6df2" opacity="0.55"/>
+        <rect x="13" y="13" width="10" height="10" rx="2" fill="#7c6df2" opacity="0.25"/>
+      </svg>
+      Godot CTEX Viewer
+      <span class="logo-sep">/</span>
+      <span class="logo-sub">Texture Inspector</span>
+    </div>
+    <button class="btn btn-accent" id="openBtn">
+      <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+        <path d="M6.5 1.5v7M3.5 5l3-3.5L10 5M1.5 9.5v1.5a1 1 0 001 1h8a1 1 0 001-1V9.5"
+              stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Open Files
+    </button>
+  </header>
+
+  <main>
+    <div id="empty">
+      <svg class="empty-icon" width="60" height="60" viewBox="0 0 60 60" fill="none">
+        <rect x="2"  y="2"  width="24" height="24" rx="3" fill="currentColor"/>
+        <rect x="34" y="2"  width="24" height="24" rx="3" fill="currentColor" opacity="0.5"/>
+        <rect x="2"  y="34" width="24" height="24" rx="3" fill="currentColor" opacity="0.5"/>
+        <rect x="34" y="34" width="24" height="24" rx="3" fill="currentColor" opacity="0.2"/>
+      </svg>
+      <h2>No textures loaded</h2>
+      <p class="sub">Open or drop Godot <code>.ctex</code> files to preview them.</p>
+      <div class="drop-zone">
+        Drag &amp; drop files anywhere, or use the <strong>Open Files</strong> button.<br>
+        Supports Lossless &middot; Lossy &middot; Basis Universal &middot; VRAM Compressed &middot; VRAM Uncompressed
+      </div>
+    </div>
+    <div id="gallery"></div>
+  </main>
+
+  <div id="statusBar" style="display:none">
+    <span id="fileCount"></span>
+    <span class="spacer"></span>
+    <button class="btn" id="clearBtn">Clear All</button>
+  </div>
+
+  <div id="overlay">
+    <div class="overlay-box">
+      <svg width="44" height="44" viewBox="0 0 44 44" fill="none">
+        <path d="M22 4v26M12 14l10-10 10 10M4 32v5a3 3 0 003 3h30a3 3 0 003-3v-5"
+              stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <p>Drop .ctex files to view</p>
+      <p class="hint">Release to load textures</p>
+    </div>
   </div>
 
   <input type="file" id="fileInput" multiple accept=".ctex" style="display:none">
-
-  <div id="gallery"></div>
 
 <script>
 function b64ToU8(b64){var bin=atob(b64),u8=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);return u8;}
@@ -109,192 +382,163 @@ var BASIS=(()=>{var _scriptName=globalThis.document?.currentScript?.src;return a
 
 </script>
 <script>
-  // ── Basis Universal transcoder initialisation ────────────────────────────
+  // ── Basis Universal transcoder ───────────────────────────────────────────
   let basisModule = null;
   BASIS({ wasmBinary: b64ToU8(WASM_B64) }).then(m => {
     if (typeof m.initializeBasis === 'function') m.initializeBasis();
     basisModule = m;
-  }).catch(() => { /* Basis not available — other formats still work */ });
+  }).catch(() => {});
 
-  // ── UI wiring ────────────────────────────────────────────────────────────
-  const drop    = document.getElementById('drop');
-  const input   = document.getElementById('fileInput');
-  const gallery = document.getElementById('gallery');
+  // ── DOM references ───────────────────────────────────────────────────────
+  const openBtn   = document.getElementById('openBtn');
+  const fileInput = document.getElementById('fileInput');
+  const gallery   = document.getElementById('gallery');
+  const empty     = document.getElementById('empty');
+  const statusBar = document.getElementById('statusBar');
+  const fileCount = document.getElementById('fileCount');
+  const clearBtn  = document.getElementById('clearBtn');
 
-  drop.addEventListener('click', () => input.click());
-  input.addEventListener('change', e => processFiles(e.target.files));
-  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('dragover'); }));
-  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('dragover'); }));
-  drop.addEventListener('drop', e => processFiles(e.dataTransfer.files));
+  // ── File open / drag-drop ────────────────────────────────────────────────
+  openBtn.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', e => { processFiles(e.target.files); fileInput.value = ''; });
 
-  // ── CTEX format constants ────────────────────────────────────────────────
-  // dataFormat field (offset 0x24)
-  const FMT_VRAM  = 0;
-  const FMT_WEBP  = 2;
-  const FMT_BASIS = 3;
+  let dragDepth = 0;
+  document.addEventListener('dragenter', e => {
+    e.preventDefault();
+    if (++dragDepth === 1) document.body.classList.add('dragging');
+  });
+  document.addEventListener('dragleave', () => {
+    if (--dragDepth === 0) document.body.classList.remove('dragging');
+  });
+  document.addEventListener('dragover', e => e.preventDefault());
+  document.addEventListener('drop', e => {
+    e.preventDefault();
+    dragDepth = 0;
+    document.body.classList.remove('dragging');
+    processFiles(e.dataTransfer.files);
+  });
 
-  // Godot Image::Format enum (offset 0x30, only used when dataFormat == FMT_VRAM)
-  const IMG_RGBA8 = 5;
-  const IMG_DXT1  = 17;   // BC1 / S3TC DXT1
+  clearBtn.addEventListener('click', () => { gallery.innerHTML = ''; updateStatus(); });
+
+  function updateStatus() {
+    const n = gallery.children.length;
+    if (n === 0) {
+      empty.style.display = '';
+      statusBar.style.display = 'none';
+    } else {
+      empty.style.display = 'none';
+      statusBar.style.display = '';
+      fileCount.textContent = n + ' texture' + (n !== 1 ? 's' : '') + ' loaded';
+    }
+  }
+
+  function fmtSize(b) {
+    if (b < 1024)     return b + ' B';
+    if (b < 1048576)  return (b / 1024).toFixed(1) + ' KB';
+    return (b / 1048576).toFixed(2) + ' MB';
+  }
+
+  // ── CTEX constants ───────────────────────────────────────────────────────
+  const FMT_VRAM = 0, FMT_WEBP = 2, FMT_BASIS = 3;
+  const IMG_RGBA8 = 5, IMG_DXT1 = 17;
 
   // ── CTEX header parser ───────────────────────────────────────────────────
-  // GST2 header layout (all fields little-endian):
-  //   0x00  u32  magic "GST2"
-  //   0x04  u32  version (1)
-  //   0x08  u32  width
-  //   0x0C  u32  height
-  //   0x10  u32  flags
-  //   0x14  u32  reserved...
-  //   0x24  u32  dataFormat  (0=VRAM, 2=WebP, 3=Basis)
-  //   0x28  u16  mip width, 0x2A u16 mip height
-  //   0x2C  u32  mip count
-  //   0x30  u32  imageFormat (Godot Image::Format enum)
-  //   -- for dataFormat 2 or 3: 0x34 u32 payload size, data at 0x38 --
-  //   -- for dataFormat 0:      data starts at 0x34                  --
   function parseCTEX(bytes) {
-    const magic = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
-    if (magic !== 'GST2') throw new Error('Not a CTEX file (bad magic)');
+    if (bytes[0]!==71||bytes[1]!==83||bytes[2]!==84||bytes[3]!==50)
+      throw new Error('Not a CTEX file (bad magic)');
 
-    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    const width      = dv.getUint32(0x08, true);
-    const height     = dv.getUint32(0x0C, true);
-    const dataFmt    = dv.getUint32(0x24, true);
-    const imageFmt   = dv.getUint32(0x30, true);
+    const dv      = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const width   = dv.getUint32(0x08, true);
+    const height  = dv.getUint32(0x0C, true);
+    const dataFmt = dv.getUint32(0x24, true);
+    const imgFmt  = dv.getUint32(0x30, true);
 
     if (dataFmt === FMT_WEBP) {
       const size = dv.getUint32(0x34, true);
-      return { kind: 'webp', width, height, payload: bytes.slice(0x38, 0x38 + size) };
+      return { kind: 'webp',  width, height, payload: bytes.slice(0x38, 0x38 + size) };
     }
-
     if (dataFmt === FMT_BASIS) {
-      // A 4-byte Godot-specific prefix sits at 0x38 before the KTX2 magic at 0x3C
       return { kind: 'basis', width, height, payload: bytes.slice(0x3C) };
     }
-
     if (dataFmt === FMT_VRAM) {
-      if (imageFmt === IMG_DXT1) {
-        return { kind: 'dxt1', width, height, payload: bytes.slice(0x34) };
-      }
-      if (imageFmt === IMG_RGBA8) {
-        return { kind: 'rgba8', width, height, payload: bytes.slice(0x34) };
-      }
-      throw new Error(`Unsupported VRAM image format: ${imageFmt}`);
+      if (imgFmt === IMG_DXT1)  return { kind: 'dxt1',  width, height, payload: bytes.slice(0x34) };
+      if (imgFmt === IMG_RGBA8) return { kind: 'rgba8', width, height, payload: bytes.slice(0x34) };
+      throw new Error('Unsupported VRAM format: ' + imgFmt);
     }
-
-    throw new Error(`Unsupported CTEX data format: ${dataFmt}`);
+    throw new Error('Unsupported CTEX data format: ' + dataFmt);
   }
 
   // ── Renderers ────────────────────────────────────────────────────────────
-
-  // Lossless / Lossy: the payload is a complete WebP file
-  function renderWebP(parsed) {
-    const blob = new Blob([parsed.payload], { type: 'image/webp' });
-    const url  = URL.createObjectURL(blob);
-    const img  = new Image();
-    img.src = url;
+  function renderWebP(p) {
+    const img = new Image();
+    img.src = URL.createObjectURL(new Blob([p.payload], { type: 'image/webp' }));
     return { el: img, badge: 'badge-webp', label: 'WebP' };
   }
 
-  // Basis Universal / KTX2
-  async function renderBasis(parsed) {
+  async function renderBasis(p) {
     if (!basisModule) throw new Error('Basis transcoder not yet loaded');
-
-    const fmt = basisModule.cTFRGBA32 ?? 13; // cTFRGBA32 = 13
+    const fmt = basisModule.cTFRGBA32 ?? 13;
     let width, height, rgba;
 
     if (basisModule.KTX2File) {
-      const f = new basisModule.KTX2File(parsed.payload);
+      const f = new basisModule.KTX2File(p.payload);
       if (!f.isValid()) { f.close(); f.delete(); throw new Error('Invalid KTX2 data'); }
-      width  = f.getWidth();
-      height = f.getHeight();
+      width = f.getWidth(); height = f.getHeight();
       if (!f.startTranscoding()) { f.close(); f.delete(); throw new Error('KTX2 startTranscoding failed'); }
       const dstSize = f.getImageTranscodedSizeInBytes(0, 0, 0, fmt);
       rgba = new Uint8Array(dstSize);
-      if (!f.transcodeImage(rgba, 0, 0, 0, fmt, 0, -1, -1)) {
-        f.close(); f.delete(); throw new Error('KTX2 transcodeImage failed');
-      }
+      if (!f.transcodeImage(rgba, 0, 0, 0, fmt, 0, -1, -1)) { f.close(); f.delete(); throw new Error('transcodeImage failed'); }
       f.close(); f.delete();
     } else if (basisModule.BasisFile) {
-      // Older build — try BasisFile (some versions auto-detect KTX2)
-      const f = new basisModule.BasisFile(parsed.payload);
-      if (!f.startTranscoding()) { f.close(); f.delete(); throw new Error('BasisFile startTranscoding failed'); }
-      width  = f.getImageWidth(0, 0);
-      height = f.getImageHeight(0, 0);
+      const f = new basisModule.BasisFile(p.payload);
+      if (!f.startTranscoding()) { f.close(); f.delete(); throw new Error('startTranscoding failed'); }
+      width = f.getImageWidth(0,0); height = f.getImageHeight(0,0);
       const dstSize = f.getImageTranscodedSizeInBytes(0, 0, fmt);
       rgba = new Uint8Array(dstSize);
-      if (!f.transcodeImage(rgba, 0, 0, fmt, 0, 0)) {
-        f.close(); f.delete(); throw new Error('BasisFile transcodeImage failed');
-      }
+      if (!f.transcodeImage(rgba, 0, 0, fmt, 0, 0)) { f.close(); f.delete(); throw new Error('transcodeImage failed'); }
       f.close(); f.delete();
     } else {
-      throw new Error('Basis module has no BasisFile or KTX2File class');
+      throw new Error('No BasisFile or KTX2File in transcoder');
     }
-
     return { el: rgbaToCanvas(rgba, width, height), badge: 'badge-basis', label: 'Basis Universal' };
   }
 
-  // VRAM Uncompressed — raw RGBA8 pixels
-  function renderRGBA8(parsed) {
-    const canvas = rgbaToCanvas(parsed.payload, parsed.width, parsed.height);
-    return { el: canvas, badge: 'badge-rgba', label: `VRAM Uncompressed ${parsed.width}×${parsed.height}` };
+  function renderRGBA8(p) {
+    return { el: rgbaToCanvas(p.payload, p.width, p.height), badge: 'badge-vram', label: 'VRAM Raw' };
   }
 
-  // VRAM Compressed — DXT1 (BC1) blocks
-  function renderDXT1(parsed) {
-    const rgba = decodeDXT1(parsed.payload, parsed.width, parsed.height);
-    const canvas = rgbaToCanvas(rgba, parsed.width, parsed.height);
-    return { el: canvas, badge: 'badge-dxt', label: `VRAM DXT1 ${parsed.width}×${parsed.height}` };
+  function renderDXT1(p) {
+    return { el: rgbaToCanvas(decodeDXT1(p.payload, p.width, p.height), p.width, p.height),
+             badge: 'badge-dxt', label: 'DXT1 / BC1' };
   }
 
   // ── DXT1 (BC1) software decoder ──────────────────────────────────────────
-  function decodeDXT1(src, width, height) {
-    const out    = new Uint8Array(width * height * 4);
-    const blocksX = Math.ceil(width  / 4);
-    const blocksY = Math.ceil(height / 4);
-
-    for (let by = 0; by < blocksY; by++) {
-      for (let bx = 0; bx < blocksX; bx++) {
-        const off = (by * blocksX + bx) * 8;
-
-        // Two RGB565 endpoint colours
-        const c0 = src[off]     | (src[off + 1] << 8);
-        const c1 = src[off + 2] | (src[off + 3] << 8);
-
-        // Expand RGB565 → RGB888
-        const r0 = Math.round(((c0 >> 11) & 0x1F) * (255 / 31));
-        const g0 = Math.round(((c0 >>  5) & 0x3F) * (255 / 63));
-        const b0 = Math.round( (c0        & 0x1F) * (255 / 31));
-        const r1 = Math.round(((c1 >> 11) & 0x1F) * (255 / 31));
-        const g1 = Math.round(((c1 >>  5) & 0x3F) * (255 / 63));
-        const b1 = Math.round( (c1        & 0x1F) * (255 / 31));
-
-        // Build 4-entry palette
-        const pal = new Uint8Array(16); // 4 colours × RGBA
-        pal[ 0]=r0; pal[ 1]=g0; pal[ 2]=b0; pal[ 3]=255;
-        pal[ 4]=r1; pal[ 5]=g1; pal[ 6]=b1; pal[ 7]=255;
+  function decodeDXT1(src, W, H) {
+    const out = new Uint8Array(W * H * 4);
+    const bW  = Math.ceil(W / 4), bH = Math.ceil(H / 4);
+    for (let by = 0; by < bH; by++) {
+      for (let bx = 0; bx < bW; bx++) {
+        const o  = (by * bW + bx) * 8;
+        const c0 = src[o]   | (src[o+1] << 8);
+        const c1 = src[o+2] | (src[o+3] << 8);
+        const r0=Math.round(((c0>>11)&31)*(255/31)), g0=Math.round(((c0>>5)&63)*(255/63)), b0=Math.round((c0&31)*(255/31));
+        const r1=Math.round(((c1>>11)&31)*(255/31)), g1=Math.round(((c1>>5)&63)*(255/63)), b1=Math.round((c1&31)*(255/31));
+        const p = new Uint8Array(16);
+        p[0]=r0; p[1]=g0; p[2]=b0; p[3]=255;
+        p[4]=r1; p[5]=g1; p[6]=b1; p[7]=255;
         if (c0 > c1) {
-          pal[ 8]=Math.round((2*r0+r1)/3); pal[ 9]=Math.round((2*g0+g1)/3); pal[10]=Math.round((2*b0+b1)/3); pal[11]=255;
-          pal[12]=Math.round((r0+2*r1)/3); pal[13]=Math.round((g0+2*g1)/3); pal[14]=Math.round((b0+2*b1)/3); pal[15]=255;
+          p[ 8]=Math.round((2*r0+r1)/3); p[ 9]=Math.round((2*g0+g1)/3); p[10]=Math.round((2*b0+b1)/3); p[11]=255;
+          p[12]=Math.round((r0+2*r1)/3); p[13]=Math.round((g0+2*g1)/3); p[14]=Math.round((b0+2*b1)/3); p[15]=255;
         } else {
-          pal[ 8]=Math.round((r0+r1)/2); pal[ 9]=Math.round((g0+g1)/2); pal[10]=Math.round((b0+b1)/2); pal[11]=255;
-          pal[12]=0; pal[13]=0; pal[14]=0; pal[15]=0; // transparent
+          p[ 8]=Math.round((r0+r1)/2);   p[ 9]=Math.round((g0+g1)/2);   p[10]=Math.round((b0+b1)/2);   p[11]=255;
+          p[12]=0; p[13]=0; p[14]=0; p[15]=0;
         }
-
-        // 4×4 index table (2 bits per texel, row-major)
-        const idx32 = src[off+4] | (src[off+5]<<8) | (src[off+6]<<16) | (src[off+7]<<24);
-
-        for (let row = 0; row < 4; row++) {
-          for (let col = 0; col < 4; col++) {
-            const px = bx * 4 + col;
-            const py = by * 4 + row;
-            if (px >= width || py >= height) continue;
-            const palIdx = (idx32 >>> ((row * 4 + col) * 2)) & 3;
-            const dst    = (py * width + px) * 4;
-            out[dst]   = pal[palIdx * 4];
-            out[dst+1] = pal[palIdx * 4 + 1];
-            out[dst+2] = pal[palIdx * 4 + 2];
-            out[dst+3] = pal[palIdx * 4 + 3];
-          }
+        const idx = src[o+4]|(src[o+5]<<8)|(src[o+6]<<16)|(src[o+7]<<24);
+        for (let row=0; row<4; row++) for (let col=0; col<4; col++) {
+          const px=bx*4+col, py=by*4+row;
+          if (px>=W||py>=H) continue;
+          const pi=(idx>>>((row*4+col)*2))&3, d=(py*W+px)*4;
+          out[d]=p[pi*4]; out[d+1]=p[pi*4+1]; out[d+2]=p[pi*4+2]; out[d+3]=p[pi*4+3];
         }
       }
     }
@@ -302,15 +546,14 @@ var BASIS=(()=>{var _scriptName=globalThis.document?.currentScript?.src;return a
   }
 
   // ── Utility ──────────────────────────────────────────────────────────────
-  function rgbaToCanvas(rgba, width, height) {
-    const canvas = document.createElement('canvas');
-    canvas.width  = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    const imgData = ctx.createImageData(width, height);
-    imgData.data.set(rgba.subarray(0, width * height * 4));
-    ctx.putImageData(imgData, 0, 0);
-    return canvas;
+  function rgbaToCanvas(rgba, W, H) {
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(W, H);
+    img.data.set(rgba.subarray(0, W * H * 4));
+    ctx.putImageData(img, 0, 0);
+    return c;
   }
 
   // ── Main file processor ───────────────────────────────────────────────────
@@ -318,47 +561,72 @@ var BASIS=(()=>{var _scriptName=globalThis.document?.currentScript?.src;return a
     for (const file of files) {
       if (!file.name.toLowerCase().endsWith('.ctex')) continue;
 
-      const card = document.createElement('div');
-      card.className = 'card';
-      gallery.appendChild(card);
+      let previewEl, badgeClass = 'badge-error', badgeLabel = 'Error', dims = '';
 
       try {
-        const buffer = await file.arrayBuffer();
-        const bytes  = new Uint8Array(buffer);
-        const parsed = parseCTEX(bytes);
+        const parsed = parseCTEX(new Uint8Array(await file.arrayBuffer()));
+        dims = parsed.width + ' × ' + parsed.height;
 
         let result;
         switch (parsed.kind) {
-          case 'webp':  result = renderWebP(parsed);         break;
-          case 'basis': result = await renderBasis(parsed);  break;
-          case 'rgba8': result = renderRGBA8(parsed);        break;
-          case 'dxt1':  result = renderDXT1(parsed);         break;
+          case 'webp':  result = renderWebP(parsed);        break;
+          case 'basis': result = await renderBasis(parsed); break;
+          case 'rgba8': result = renderRGBA8(parsed);       break;
+          case 'dxt1':  result = renderDXT1(parsed);        break;
         }
 
-        card.appendChild(result.el);
-
-        const badge = document.createElement('div');
-        badge.className = `badge ${result.badge}`;
-        badge.textContent = result.label;
-        card.appendChild(badge);
+        previewEl = document.createElement('div');
+        previewEl.className = 'preview';
+        previewEl.appendChild(result.el);
+        badgeClass = result.badge;
+        badgeLabel = result.label;
 
       } catch (err) {
-        const msg = document.createElement('p');
-        msg.textContent = String(err);
-        msg.style.color = '#f66';
-        msg.style.margin = '10px 0';
-        card.appendChild(msg);
-
-        const badge = document.createElement('div');
-        badge.className = 'badge badge-error';
-        badge.textContent = 'Error';
-        card.appendChild(badge);
+        previewEl = document.createElement('div');
+        previewEl.className = 'preview-error';
+        previewEl.innerHTML = '<svg width="30" height="30" viewBox="0 0 30 30" fill="none"><path d="M15 2L1 27h28L15 2z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><line x1="15" y1="12" x2="15" y2="19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="15" cy="22.5" r="1.4" fill="currentColor"/></svg>';
+        const t = document.createElement('span');
+        t.textContent = String(err).replace(/^Error: /, '');
+        previewEl.appendChild(t);
       }
 
-      const name = document.createElement('div');
-      name.className = 'name';
-      name.textContent = file.name;
-      card.appendChild(name);
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.appendChild(previewEl);
+
+      const meta = document.createElement('div');
+      meta.className = 'card-meta';
+
+      const top = document.createElement('div');
+      top.className = 'card-top';
+
+      const badge = document.createElement('span');
+      badge.className = 'badge ' + badgeClass;
+      badge.textContent = badgeLabel;
+      top.appendChild(badge);
+
+      if (dims) {
+        const d = document.createElement('span');
+        d.className = 'dims';
+        d.textContent = dims;
+        top.appendChild(d);
+      }
+      meta.appendChild(top);
+
+      const fn = document.createElement('div');
+      fn.className = 'fname';
+      fn.title = file.name;
+      fn.textContent = file.name;
+      meta.appendChild(fn);
+
+      const fs = document.createElement('div');
+      fs.className = 'fsize';
+      fs.textContent = fmtSize(file.size);
+      meta.appendChild(fs);
+
+      card.appendChild(meta);
+      gallery.appendChild(card);
+      updateStatus();
     }
   }
 </script>
