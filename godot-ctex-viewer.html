@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>.ctex Viewer</title>
+  <style>
+    body {
+      margin: 0;
+      background: #0a0a0a;
+      color: #ddd;
+      font-family: system-ui, sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #drop {
+      flex: 1;
+      border: 8px dashed #555;
+      margin: 30px;
+      border-radius: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 3.2rem;
+      color: #777;
+      cursor: pointer;
+      transition: all 0.3s;
+      text-align: center;
+      background: rgba(255,255,255,0.02);
+    }
+    #drop.dragover {
+      border-color: #0f8;
+      color: #0f8;
+      background: rgba(0,255,130,0.1);
+      font-size: 3.5rem;
+    }
+    #gallery {
+      padding: 20px 40px;
+      overflow-y: auto;
+      background: #111;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      justify-content: center;
+    }
+    .card {
+      background: #1e1e1e;
+      padding: 15px;
+      border-radius: 18px;
+      text-align: center;
+      max-width: 420px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.6);
+    }
+    .card img {
+      max-width: 100%;
+      border-radius: 12px;
+      image-rendering: pixelated;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    }
+    .name {
+      margin-top: 12px;
+      font-weight: 600;
+      font-size: 1.05rem;
+      word-break: break-all;
+      color: #ccc;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="drop">
+    DROP .CTEX FILE HERE<br>
+    <small style="font-size:1.5rem; margin-top:25px; opacity:0.7;">or click to select</small>
+  </div>
+
+  <input type="file" id="fileInput" multiple accept=".ctex" style="display:none">
+
+  <div id="gallery"></div>
+
+<script>
+  const drop = document.getElementById('drop');
+  const input = document.getElementById('fileInput');
+  const gallery = document.getElementById('gallery');
+
+  drop.addEventListener('click', () => input.click());
+  input.addEventListener('change', e => processFiles(e.target.files));
+
+  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('dragover'); }));
+  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('dragover'); }));
+  drop.addEventListener('drop', e => processFiles(e.dataTransfer.files));
+
+  function findRIFF(bytes) {
+    for (let i = 0; i < bytes.length - 4; i++) {
+      if (bytes[i]===82 && bytes[i+1]===73 && bytes[i+2]===70 && bytes[i+3]===70) return i;
+    }
+    return -1;
+  }
+
+  async function processFiles(files) {
+    for (let file of files) {
+      if (!file.name.toLowerCase().endsWith('.ctex')) continue;
+
+      const buffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      const riffIndex = findRIFF(bytes);
+
+      const card = document.createElement('div');
+      card.className = 'card';
+
+      if (riffIndex !== -1) {
+        const ddsData = bytes.slice(riffIndex);
+        const blob = new Blob([ddsData], { type: 'image/vnd.ms-dds' });
+        const url = URL.createObjectURL(blob);
+
+        const img = document.createElement('img');
+        img.src = url;
+        card.appendChild(img);
+      } else {
+        const p = document.createElement('p');
+        p.textContent = 'No image data found';
+        p.style.color = '#f66';
+        card.appendChild(p);
+      }
+
+      const name = document.createElement('div');
+      name.className = 'name';
+      name.textContent = file.name;
+      card.appendChild(name);
+
+      gallery.appendChild(card);
+    }
+  }
+</script>
+</body>
+</html>
