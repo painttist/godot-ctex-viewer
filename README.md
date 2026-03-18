@@ -1,0 +1,7 @@
+# Godot CTEX viewer
+
+A single local HTML file that views Godot .ctex files. Supports the following modes (`Lossless`, `Lossy`, `VRAM uncompressed`, `VRAM compressed`, `Basis Universal`). The test files are exported from *Godot 4.6.1*. The HTML integrates the basis transcoder.js and .wasm.
+
+## How to use
+
+Simply download the `godot-ctex-viewer.html` file and open it in a browser.
